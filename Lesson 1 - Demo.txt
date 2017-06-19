@@ -1,0 +1,462 @@
+Working with Object Types:
+
+CREATE TYPE address_typ AS OBJECT ( 
+   street          VARCHAR2(30),
+   city            VARCHAR2(20),
+   state           CHAR(2),
+   postal_code     VARCHAR2(6) );
+/
+CREATE TYPE employee_typ AS OBJECT (
+  employee_id       NUMBER(6),
+  first_name        VARCHAR2(20),
+  last_name         VARCHAR2(25),
+  email             VARCHAR2(25),
+  phone_number      VARCHAR2(20),
+  hire_date         DATE,
+  job_id            VARCHAR2(10),
+  salary            NUMBER(8,2),
+  commission_pct    NUMBER(2,2),
+  manager_id        NUMBER(6),
+  department_id     NUMBER(4),
+  address           address_typ,
+  MAP MEMBER FUNCTION get_idno RETURN NUMBER,
+  MEMBER PROCEDURE display_address ( SELF IN OUT NOCOPY employee_typ ) );
+/
+CREATE TYPE BODY employee_typ AS
+  MAP MEMBER FUNCTION get_idno RETURN NUMBER IS
+  BEGIN
+    RETURN employee_id;
+  END;
+  MEMBER PROCEDURE display_address ( SELF IN OUT NOCOPY employee_typ ) IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE(first_name || ' '  || last_name);
+    DBMS_OUTPUT.PUT_LINE(address.street);
+    DBMS_OUTPUT.PUT_LINE(address.city || ', '  || address.state || ' ' ||
+                         address.postal_code);   
+  END;
+END;
+/
+CREATE TABLE employee_tab OF employee_typ;
+
+---------
+Object types can be used wherever built-in types such as CHAR or NUMBER are there. In below example, you declare object emp of type employee_typ. Then, you call the constructor for object type employee_typ to initialize the object.
+
+Declaring Object Types in a PL/SQL Block:
+
+DECLARE
+  emp employee_typ; -- emp is atomically null
+BEGIN
+-- call the constructor for employee_typ
+  emp := employee_typ(315, 'Francis', 'Logan', 'FLOGAN',
+        '555.777.2222', '01-MAY-04', 'SA_MAN', 11000, .15, 101, 110, 
+         address_typ('376 Mission', 'San Francisco', 'CA', '94222'));
+  DBMS_OUTPUT.PUT_LINE(emp.first_name || ' ' || emp.last_name); -- display details
+  emp.display_address();  -- call object method to display details
+END;
+/
+==============How to insert NULLs for objects in a Table
+CREATE OR REPLACE TYPE person_typ AS OBJECT (
+  idno           NUMBER,
+  name           VARCHAR2(30),
+  phone          VARCHAR2(20),
+  MAP MEMBER FUNCTION get_idno RETURN NUMBER, 
+  MEMBER PROCEDURE display_details ( SELF IN OUT NOCOPY person_typ ) );
+/
+
+CREATE OR REPLACE TYPE BODY person_typ AS
+  MAP MEMBER FUNCTION get_idno RETURN NUMBER IS
+  BEGIN
+    RETURN idno;
+  END;
+  MEMBER PROCEDURE display_details ( SELF IN OUT NOCOPY person_typ ) IS
+  BEGIN
+    -- use the PUT_LINE procedure of the DBMS_OUTPUT package to display details
+    DBMS_OUTPUT.PUT_LINE(TO_CHAR(idno) || ' - '  || name || ' - '  || phone);
+  END;
+END;
+/
+CREATE TABLE contact (
+  contact        person_typ,
+  contact_date   DATE );
+
+INSERT INTO contact VALUES (
+  person_typ (NULL, NULL, NULL), '24 Jun 2003' );
+
+INSERT INTO contact VALUES (
+  NULL, '24 Jun 2003' );
+
+In the above example, two instances of person_typ are inserted into the table and give two different results. In both cases, Oracle Database allocates space in the "contact" table for a new row and sets its DATE column to the value given. But in the first case, Oracle Database allocates space for an object in the contact column and sets each of the object's attributes to NULL. In the second case, Oracle Database sets the person_typ field itself to NULL and does not allocate space for an object.
+
+In some cases, you can omit checks for null values. A table row or row object cannot be null. A nested table of objects cannot contain an element whose value is NULL.
+
+A nested table or array can be null, so you do need to handle that condition. A null collection is different from an empty one, one that has no elements.
+=========Constraints for Object Tables
+You can define constraints on an object table just as you can on other tables. You can define constraints on the leaf-level scalar attributes of a column object, with the exception of REFs that are not scoped.
+
+The following examples illustrate defining constraints.
+
+Example 2-3 places an implicit PRIMARY KEY constraint on the office_id column of the object table office_tab.
+
+CREATE OR REPLACE TYPE location_typ AS OBJECT (
+  building_no  NUMBER,
+  city         VARCHAR2(40) );
+/
+
+CREATE OR REPLACE TYPE office_typ AS OBJECT (
+  office_id    VARCHAR(10),
+  office_loc   location_typ,
+  occupant     person_typ );
+/
+
+CREATE TABLE office_tab OF office_typ (
+             office_id      PRIMARY KEY );
+
+The object type location_typ defined in the below example, is the type of the dept_loc column in the department_mgrs table in Example 2-4.
+
+CREATE TABLE department_mgrs (
+  dept_no     NUMBER PRIMARY KEY, 
+  dept_name   CHAR(20),
+  dept_mgr    person_typ,
+  dept_loc    location_typ,
+  CONSTRAINT  dept_loc_cons1
+      UNIQUE (dept_loc.building_no, dept_loc.city),
+  CONSTRAINT  dept_loc_cons2
+       CHECK (dept_loc.city IS NOT NULL) );
+
+INSERT INTO department_mgrs VALUES 
+          ( 101, 'Physical Sciences', 
+           person_typ(65,'Vrinda Mills', '1-1-650-555-0125'),
+           location_typ(300, 'Palo Alto'));
+--------------Indexes for Object Tables
+Creating an Index on an Object Type in a Table This example indexes city, which is a leaf-level scalar attribute of the column object dept_addr
+
+CREATE TABLE department_loc (
+  dept_no     NUMBER PRIMARY KEY, 
+  dept_name   CHAR(20),
+  dept_addr   location_typ );
+
+CREATE INDEX  i_dept_addr1
+          ON  department_loc (dept_addr.city);
+
+INSERT INTO department_loc VALUES
+          ( 101, 'Physical Sciences',
+           location_typ(300, 'Palo Alto'));
+INSERT INTO department_loc VALUES 
+          ( 104, 'Life Sciences', 
+           location_typ(400, 'Menlo Park'));
+INSERT INTO department_loc VALUES 
+          ( 103, 'Biological Sciences', 
+           location_typ(500, 'Redwood Shores'));
+================Creating a Member Method
+CREATE OR REPLACE TYPE solid_typ AS OBJECT (
+  len    INTEGER,
+  wth    INTEGER,
+  hgt    INTEGER,
+  MEMBER FUNCTION surface RETURN INTEGER,
+  MEMBER FUNCTION volume RETURN INTEGER,
+  MEMBER PROCEDURE display (SELF IN OUT NOCOPY solid_typ) );
+/
+
+CREATE OR REPLACE TYPE BODY solid_typ AS
+  MEMBER FUNCTION volume RETURN INTEGER IS
+  BEGIN
+    RETURN len * wth * hgt;
+ -- RETURN SELF.len * SELF.wth * SELF.hgt; -- equivalent to previous line 
+  END;
+  MEMBER FUNCTION surface RETURN INTEGER IS
+  BEGIN -- not necessary to include SELF in following line
+    RETURN 2 * (len * wth + len * hgt + wth * hgt);
+  END;
+  MEMBER PROCEDURE display (SELF IN OUT NOCOPY solid_typ) IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Length: ' || len || ' - '  || 'Width: ' || wth 
+                          || ' - '  || 'Height: ' || hgt);
+    DBMS_OUTPUT.PUT_LINE('Volume: ' || volume || ' - ' || 'Surface area: ' 
+                          || surface);
+  END;
+END;
+/
+
+CREATE TABLE solids of solid_typ;
+INSERT INTO solids VALUES(10, 10, 10);
+INSERT INTO solids VALUES(3, 4, 5);
+SELECT * FROM solids;
+SELECT s.volume(), s.surface() FROM solids s WHERE s.len = 10;
+DECLARE
+  solid solid_typ;
+BEGIN -- PL/SQL block for selecting a solid and displaying details
+  SELECT VALUE(s) INTO solid FROM solids s WHERE s.len = 10;
+  solid.display();
+END;
+/
+SELF is always the first parameter passed to the method.
+In member functions, if SELF is not declared, its parameter mode defaults to IN.
+In member procedures, if SELF is not declared, its parameter mode defaults to IN OUT. The default behavior does not include the NOCOPY compiler hint.
+See also "Using SELF IN OUT NOCOPY with Member Procedures".
+================Bulk Bind
+Create table parts(partno number, partname varchar2(40));
+DECLARE
+		TYPE NumTab IS TABLE OF NUMBER(6) INDEX BY BINARY_INTEGER;
+ 		TYPE NameTab IS TABLE OF CHAR(25) INDEX BY BINARY_INTEGER;
+ 		pnums NumTab;
+ 		pnames NameTab;
+ 		t1 NUMBER(9,6);
+ 		t2 NUMBER(9,6);
+ 		t3 NUMBER(9,6);
+ 		PROCEDURE get_time (t OUT NUMBER) IS
+		BEGIN
+ 			select substr(systimestamp,17,9) into t from dual;
+		END;
+BEGIN
+ 		FOR j IN 1..10000 LOOP -- load index-by tables
+ 			pnums(j) := j;
+ 			pnames(j) := 'Part No. ' || TO_CHAR(j);
+ 		END LOOP;
+ 		get_time(t1);
+	FOR i IN 1..10000 LOOP -- use FOR loop
+ 		INSERT INTO parts VALUES (pnums(i), pnames(i));
+ 	END LOOP;
+	get_time(t2);
+ 	FORALL i IN 1..10000 -- use FORALL statement 
+		INSERT INTO parts VALUES (pnums(i), pnames(i));
+ 	get_time(t3);
+ 	dbms_output.put_line('Execution Time (secs)');
+ 	dbms_output.put_line('FOR loop: ' || TO_CHAR(t2 - t1));
+ 	dbms_output.put_line('FORALL: ' || TO_CHAR(t3 - t2));
+ END;
+/
+========= FORALL - affects Rollback
+CREATE TABLE fau_demo(c1 number, c2 varchar2(15));
+ 
+INSERT INTO fau_demo VALUES(10, 'Clerk');
+INSERT INTO fau_demo VALUES(10, 'Clerk');
+INSERT INTO fau_demo VALUES(20, 'Bookkeeper');
+INSERT INTO fau_demo VALUES(30, 'Analyst');
+INSERT INTO fau_demo VALUES(30, 'Analyst');
+Commit;
+
+DECLARE
+ 		TYPE NumList IS TABLE OF NUMBER;
+ 		depts NumList := NumList(10, 20, 30);
+BEGIN
+ 		FORALL j IN depts.FIRST..depts.LAST 	
+			UPDATE fau_demo SET c2 = c2 || ' (temp)'  WHERE c1 = depts(j);
+ 		-- raises a "value too large" exception
+ EXCEPTION
+ 		WHEN OTHERS THEN
+ 			COMMIT;
+ END;
+ /
+--------To show the number of rows affected by each execution of the DML :
+DECLARE
+		TYPE NumList IS TABLE OF NUMBER;
+		depts NumList := NumList(10, 20, 30,70);
+BEGIN
+		FORALL j IN depts.FIRST..depts.LAST 
+			UPDATE emp SET sal = sal * 1.10 	WHERE deptno = depts(j);
+		For i in 1.. depts.count loop 
+			Dbms_output.put_line(SQL%BULK_ROWCOUNT(i));
+		End loop;
+END;
+/
+==========Counting rows affeted by Forall iterations
+%BULK_ROWCOUNT is usually equal to 1 for inserts, because a typical insert operation affects only a single row. 
+But for the INSERT ... SELECT construct, %BULK_ROWCOUNT might be greater than 1.
+
+Create table emp_by_dept(empno number, deptno number);
+ 
+DECLARE
+		TYPE num_tab IS TABLE OF NUMBER;
+		deptnums num_tab;
+BEGIN
+		SELECT deptno BULK COLLECT INTO deptnums FROM DEPT;
+		FORALL i IN 1..deptnums.COUNT INSERT INTO emp_by_dept SELECT empno, deptno FROM emp WHERE 	deptno = deptnums(i);
+ 
+ 		FOR i IN 1..deptnums.COUNT LOOP
+		-- Count how many rows were inserted for each department 
+			dbms_output.put_line('Dept '||deptnums(i)||': inserted '|| SQL%BULK_ROWCOUNT(i)||' records');
+		END LOOP;
+		dbms_output.put_line('Total records inserted =' || SQL%ROWCOUNT);
+END;
+/
+----------Forall exception handling
+declare
+		TYPE NumList IS TABLE OF NUMBER;
+ 		num_tab NumList := NumList(10,0,11,12,30,0,20,199,2,0,9,1);
+		errnum NUMBER;
+begin
+		FORALL i IN num_tab.FIRST..num_tab.LAST SAVE EXCEPTIONS  DELETE FROM emp WHERE sal>500000/num_tab(i);
+exception
+		when others then
+  			errnum :=SQL%BULK_EXCEPTIONS.COUNT;
+			dbms_output.put_line('Number of errors is ' || errnum);
+			FOR i IN 1..errnum LOOP
+				dbms_output.put_line('Error ' || i || ' occurred during '|| 'execution ' ||  SQL%BULK_EXCEPTIONS(i).ERROR_INDEX);
+				dbms_output.put_line('Oracle error code is ' || SQL%BULK_EXCEPTIONS(i).ERROR_CODE);
+				dbms_output.put_line('Oracle error message is ' || sqlerrm(-(SQL%BULK_EXCEPTIONS(i).ERROR_CODE)));
+			END LOOP;
+END;
+/
+------Restriction on Forall
+You can use FOR ALL clause only in tools which include PL SQL engine. Otherwise, you get the error this feature is not supported in client-side programs.
+The INSERT, UPDATE, or DELETE statement must reference at least one collection. 
+
+CREATE TABLE pairs (n NUMBER, m NUMBER);
+DECLARE
+		TYPE NumTab IS TABLE OF NUMBER;
+		nums NumTab := NumTab(1, 2, 3);
+BEGIN
+		FORALL i IN nums.FIRST..nums.LAST  INSERT INTO pairs VALUES(nums(i), 10); -- works
+		FORALL i IN 1..3 INSERT INTO pairs VALUES(5, 10); -- causes an error
+END;
+/
+The above code throws error like DML statement without BULK In-BIND cannot be used inside FORALL
+-----Restriction on Forall
+All collection elements in the specified range must exist. If an element is missing or was deleted, you get an error.
+declare
+ 		TYPE NumList IS TABLE OF NUMBER;
+ 		depts NumList := NumList(10, 20, 30, 40);
+ begin
+ 		depts.DELETE(3); -- delete third element
+ 		for i in depts.first..depts.last loop
+ 			dbms_output.put_line(depts(i));
+ 		end loop;
+exception
+		when others then
+			dbms_output.put_line(sqlerrm);
+end;
+/
+---another example
+declare
+		TYPE NumList IS TABLE OF NUMBER;
+		depts NumList := NumList(10, 20, 30, 40);
+begin
+		depts.DELETE(3); -- delete third element
+		FORALL i IN depts.FIRST..depts.LAST  DELETE FROM emp WHERE deptno = depts(i); -- causes an error
+exception
+		when others then
+			dbms_output.put_line(sqlerrm);
+END;
+/
+shows   ORA-22160: element at index [3] does not exist
+--
+Collection subscripts cannot be expressions, as the following example shows or else there would be a compilation error : 
+declare 
+		TYPE NumList IS TABLE OF NUMBER;
+		depts NumList := NumList(10, 20, 30, 40);
+begin
+		FORALL i IN depts.FIRST..depts.LAST  DELETE FROM emp WHERE deptno = depts(i+10);
+exception
+		when others then
+			dbms_output.put_line('error');
+			dbms_output.put_line(sqlerrm);
+END;
+/ 
+PLS-00430: FORALL iteration variable I is not allowed in this context
+---
+You cannot use the SELECT ... BULK COLLECT statement in a FORALL statement. There has to be a INSERT/UPDATE/DELETE with a FOR ALL. Otherwise, you get the error implementation restriction: “cannot use FORALL and BULK COLLECT INTO together in SELECT statements.”: 
+declare
+ 		TYPE dNumList IS TABLE OF dept.deptno%TYPE;
+ 		dnums dNumList:= dNumList(10,20,30,40);
+		TYPE eNumList IS TABLE OF emp.empno%TYPE;
+ 		enums eNumList;
+		a number;
+ 		ctr number :=1;
+begin
+		forall i in dnums.first..dnums.last select empno bulk collect into enums from emp where deptno=dnums(i);
+		a:=enums.count;
+ 		While ctr<=a loop
+  			Dbms_output.put_line(enums(ctr));
+  			ctr:=ctr+1;
+  		End loop;
+End;
+/
+-----Retrieving Query Results with the BULK COLLECT Clause
+The keywords BULK COLLECT tell the SQL engine to bulk-bind output collections before returning them to the PL/SQL engine. The SQL engine bulk-binds all collections referenced in the INTO list. 
+declare 
+  		TYPE NumTab IS TABLE OF emp.empno%TYPE;
+  		TYPE NameTab IS TABLE OF emp.ename%TYPE;
+  		enums NumTab; -- no need to initialize
+  		names NameTab;
+  		a number;
+  		ctr number:=1;
+ begin
+		SELECT empno, ename BULK COLLECT INTO enums, names FROM emp;
+  		a:=enums.count;
+  		While ctr<=a loop
+   			Dbms_output.put_line(enums(ctr)||names(ctr));
+   			Ctr:=ctr+1;
+  		End loop;
+ End;
+/ 
+----
+In the following example, SQL engine loads all the values from an object column into a nested table before returning to the PL/SQL engine. 
+CREATE TYPE Coords AS OBJECT (x NUMBER, y NUMBER);
+/
+CREATE TABLE grid (num NUMBER, loc Coords);
+INSERT INTO grid VALUES(10, Coords(1,2));  INSERT INTO grid VALUES(20, Coords(3,4));  INSERT INTO grid VALUES(30, Coords(5,6));   INSERT INTO grid VALUES(40, Coords(7,8));
+ 
+DECLARE
+ 		TYPE CoordsTab IS TABLE OF Coords;
+ 		pairs CoordsTab;
+ 		a number;
+ 		ctr number :=1;
+ BEGIN
+ 		SELECT loc BULK COLLECT INTO pairs FROM grid;
+		a:=pairs.count;
+		While ctr<=a loop
+			Dbms_output.put_line(pairs(ctr).x||' '||pairs(ctr).y);
+			Ctr:=ctr+1;
+		End loop;
+End;
+/
+-----
+You can use the BULK COLLECT clause in the RETURNING INTO clause of an INSERT, UPDATE, or DELETE statement, as the following example shows. 
+DECLARE
+		TYPE NumList IS TABLE OF emp.empno%TYPE;
+		enums NumList;
+		a number;
+		ctr number :=1;
+BEGIN
+		DELETE FROM emp WHERE deptno = 30 RETURNING empno BULK COLLECT INTO enums;
+		a:=enums.count;
+		While ctr<=a loop
+ 			Dbms_output.put_line(enums(ctr));
+ 			ctr:=ctr+1;
+ 		End loop;
+END;
+/
+-----
+All targets in a BULK COLLECT INTO clause must be collections, as the following example shows names is a collection, but not salary, hence error.
+	DECLARE
+		TYPE NameList IS TABLE OF emp.ename%TYPE;
+		names NameList;
+		salary emp.sal%TYPE;
+	BEGIN
+		SELECT ename, sal BULK COLLECT INTO names, salary from emp;
+	END;
+/ 
+PLS-00497: cannot mix between single row and multi-row (BULK) in INTO list
+---- Using FORALL and Bulk collect together
+You can combine the BULK COLLECT clause with a FORALL statement, in which case, the SQL engine bulk-binds column values incrementally. In the following example, if collection dnums has 3 elements, each of which causes 2 rows to be deleted, then collection enums has 6 elements when the statement completes:
+	Declare
+ 		TYPE dNumList IS TABLE OF dept.deptno%TYPE;
+ 		dnums dNumList;
+ 		TYPE eNumList IS TABLE OF emp.empno%TYPE;
+ 		enums eNumList;
+ 		a number;
+ 		ctr number :=1;
+ 	begin
+ 		select deptno bulk collect into dnums from dept where deptno<=30;
+ 		FORALL j IN dnums.FIRST..dnums.LAST DELETE FROM emp WHERE deptno = dnums(j) RETURNING empno BULK COLLECT INTO enums;
+ 		a:=enums.count;
+ 		While ctr<=a loop
+  			Dbms_output.put_line(enums(ctr));
+  			ctr:=ctr+1;
+  		End loop;
+ 	END;
+/
+	The column values returned by each execution of DELETE are added to the values of enum returned previously. This is possible with FOR ALL. With a FOR loop, the previous values would have been overwritten.
+------ End of Lesson 1 Demo
+
+---------
