@@ -1,0 +1,679 @@
+--you can use DDL directly in PL/SQL block - this will give an error
+begin
+dbms_output.put_line('hello');
+create table mydtable(empno number, ename char(10));
+end;
+/
+---Use Dynamic sql to create
+begin
+dbms_output.put_line('hello');
+execute immediate 'create table mydtable1(empno number, ename char(10))';
+end;
+/
+--using the values directly - 
+begin
+execute immediate 'insert into mybonus values (101, 1000)'; --using empid, ebon;
+end;
+/
+-----
+declare
+empid number(4) := 101;
+ebon number(7):=12000;
+sqlt varchar2(100):= 'insert into mybonus1 values (:1, :2)';
+begin
+execute immediate 'create table mybonus1(id number, amt number)';
+execute immediate sqlt using empid, ebon;
+end;
+/
+----------
+declare
+ 	--empid number(4) := 101;
+ 	--ebon number(7):=12000;
+ 	sqlt varchar2(100):= 'insert into mybonus11 values (:1, :2)';
+ begin
+ 	--execute immediate 'create table mybonus11 (id number, amt number)';
+ 	execute immediate sqlt using &empid, &ebon;
+ end;
+----
+declare
+ 	--empid number(4) := 101;
+ 	--ebon number(7):=12000;
+ 	sqlt varchar2(100):= 'insert into mybonus1 values (:1, :2)';
+ begin
+ 	--execute immediate 'create table mybonus1 (id number, amt number)';
+ 	execute immediate sqlt using 101, 12000;
+ end;
+ /
+-------
+declare
+   	--empid number(4) := 103;
+   	--ebon number(7):=13000;
+   	sqlt varchar2(100):= 'insert into &&mybonus1 values (:1, :2)';
+begin
+   	execute immediate 'create table &mybonus1 (id number, amt number)';
+   	execute immediate sqlt using &empid, &ebon;
+end;
+/
+----------
+declare
+empid number(4) := 102;
+ebon number(7):=10000;
+sqlt varchar2(100);
+begin
+sqlt:= 'insert into mybonus1 values (:1, :2)';
+execute immediate sqlt using empid, ebon;
+execute immediate 'select * from mybonus1';
+--execute immediate 'select * from mybonus1 where amt=ebon';
+--the above statement will give an error as inside the sql string ebon has 
+	-- no meaning and you have to use :ebon to treat it as placeholder, followed by the
+	-- using clause. In this case it will search for a column named ebon in the table
+	-- and since such a column does not exist, it will give error : ebon is invalid identifier
+execute immediate 'select * from mybonus1 where amt=:abc' using ebon;
+sqlt:='select * from mybonus1 where amt >:b';
+execute immediate sqlt using  ebon;
+end;
+/
+------
+create or replace procedure p9 as
+empid number(4) := 103;
+ebon number(7):=10050;
+sqlt varchar2(100);
+begin
+sqlt:= 'insert into mybonus1 values (:1, :2)';
+execute immediate sqlt using empid, ebon;
+execute immediate 'select * from mybonus1';
+--execute immediate 'select * from mybonus1 where amt=:ebon';
+--the above statement will give an error as inside the sql string you can 
+--use identifiers preceded by :, followed by the using clause
+execute immediate 'select * from mybonus1 where amt=:abc' using ebon;
+sqlt:='select * from mybonus1 where amt >:b';
+execute immediate sqlt using ebon;
+end;
+/
+---------to take output of the select statement
+declare
+eid number:=100;
+--sqlt varchar2(100);
+edata emp%rowtype;
+begin
+execute immediate 'select * from emp where id=:1' into edata using eid;
+dbms_output.put_line('employee id : '||edata.id||' sal is : '||edata.salary);
+end;
+/
+-----------
+declare
+--eid number:=101;
+--sqlt varchar2(100);
+ebon mybonus1%rowtype;
+begin
+execute immediate 'select * from mybonus1 where id=:1' into ebon using 101;
+dbms_output.put_line('employee id : '||ebon.id||' bonus is : '||ebon.amt);
+
+execute immediate 'select * from mybonus1 where id=:1' into ebon using 102;
+dbms_output.put_line('employee id : '||ebon.id||' bonus is : '||ebon.amt);
+end;
+/
+----using exception
+declare
+--eid number:=101;
+--sqlt varchar2(100);
+ebon mybonus1%rowtype;
+begin
+execute immediate 'select * from mybonus1 where id=:1' into ebon using 103;
+dbms_output.put_line('employee id : '||ebon.id||' bonus is : '||ebon.amt);
+execute immediate 'select * from mybonus1 where id=:1' into ebon using 102;
+dbms_output.put_line('employee id : '||ebon.id||' bonus is : '||ebon.amt);
+exception
+when too_many_rows then 
+dbms_output.put_line('too many such employees');
+when no_data_found then 
+dbms_output.put_line('no such employee');
+end;
+/
+-----------using pl/sql block in the dnamic sql
+
+--create a new procedure: 
+create or replace procedure addone(eid number,eamt number)
+is
+begin
+insert into mybonus1 values(eid,eamt);
+end;
+/
+--calling that procedure in a pl/sql block using dynamic sql
+declare
+  	plsql_block varchar2(500);
+begin
+  	plsql_block := 'begin addone(105, 15000); end;';
+execute immediate plsql_block;
+end;
+/
+--calling same proc by supplying value by using clause
+declare
+ 	plsql_block varchar2(500);
+ begin
+ 	plsql_block := 'begin addone(:id, :amt); end;';
+ 	execute immediate plsql_block using 106,5000;
+ end;
+/
+----- using returning into clause
+declare
+sql_stmt varchar2(100):='update mybonus1 set amt = amt+2000 where id = :1 returning amt into :2';
+emp_id number:=&eno;
+bon number;
+begin
+execute immediate sql_stmt using emp_id returning into bon;
+dbms_output.put_line(bon);
+end;
+/
+----returning with delete
+declare
+emp_id number:=&eno;
+ebon mybonus1.amt%type;
+begin
+execute immediate 'delete from mybonus1 where id=:1 returning amt into :2' using emp_id returning into ebon;
+dbms_output.put_line(ebon);
+end;
+/
+---returning into - with more than one receiving fields
+declare
+emp_id number:=&eno;
+emp_id1 number;
+bon number;
+begin
+execute immediate 'delete from mybonus1 where id=:1 returning id, amt into :2,:3' using emp_id returning into emp_id1, bon;
+
+dbms_output.put_line('deleted employee is :'||emp_id1||' and his bonus is : '||bon);
+end;
+/
+------------procedure to accept table name from user and checks if a condition for deletion of the record is suplied and delete records
+create procedure delete_rows( table_name in varchar2,  condition in varchar2 default null) as
+ 	where_clause varchar2(100) := ' where ' || condition;
+begin
+ 	if condition is null then 
+where_clause := null; 
+end if;
+ 	execute immediate 'delete from ' || table_name || where_clause;
+ end;
+ /
+exec delete_rows('mybonus1', 'amt < 6000')
+-----------returning int with OUT mode and USING - BIND retruned values thru USING clause
+declare
+sql_stmt varchar2(200);
+my_empno number:= 100;
+my_ename varchar2(30);
+my_comm number;
+my_sal number := 16666;
+mynewsal number;
+begin
+sql_stmt := 'update emp set salary = :1 where id = :2 returning first_name, comm1, salary  into :3, :4,:5';
+/* bind returned values through USING clause. */
+execute immediate sql_stmt using my_sal, my_empno, out my_ename, out my_comm, out mynewsal;
+dbms_output.put_line('Name:' || my_ename || ' Comm:' || my_comm || ' New Sal:' || mynewsal);
+end;
+/
+=======================post lunch
+When appropriate, you must specify the OUT or IN OUT mode for bind arguments passed as parameters. For example, suppose you want to call the following standalone procedure: 
+
+create sequence deptno_seq start with 51 increment by 1
+
+CREATE or replace PROCEDURE create_dept(deptno IN OUT NUMBER, dname IN VARCHAR2, loc IN VARCHAR2) AS
+BEGIN
+	If deptno<=50 then
+SELECT deptno_seq.NEXTVAL INTO deptno FROM dual;
+End if;
+INSERT INTO dept VALUES (deptno, dname, loc);
+END;
+/
+
+To call the procedure from a dynamic PL/SQL block, you must specify the IN  OUT mode(only IN or only OUT will give an error) for the bind argument associated with formal parameter deptno, as follows:
+
+DECLARE
+plsql_block VARCHAR2(500);
+new_deptno NUMBER(2);
+new_dname VARCHAR2(14) := ’ADVERTISING’;
+new_loc VARCHAR2(13) := ’NEW YORK’;
+BEGIN
+plsql_block := ’BEGIN create_dept(:a, :b, :c); END;’;
+EXECUTE IMMEDIATE plsql_block USING IN OUT new_deptno, new_dname, new_loc;
+Dbms_output.put_line(new_deptno);
+END;
+/
+CREATE or replace PROCEDURE create_dept (deptno IN OUT NUMBER, dname IN VARCHAR2, loc IN VARCHAR2) AS
+BEGIN
+If deptno is null then
+SELECT deptno_seq.NEXTVAL INTO deptno FROM dual;
+	End if;
+INSERT INTO dept VALUES (deptno, dname, loc);
+END;
+/
+
+DECLARE
+plsql_block VARCHAR2(500);
+new_deptno NUMBER(2):=&a;
+new_dname VARCHAR2(14) := ’MARKETING’;
+new_loc VARCHAR2(13) := ’DALLAS’;
+BEGIN
+plsql_block := ’BEGIN create_dept(:a, :b, :c); END;’;
+EXECUTE IMMEDIATE plsql_block USING IN OUT new_deptno, new_dname, new_loc;
+Dbms_output.put_line(new_deptno);
+END;
+/
+---------using IN OUT
+--creating seq
+create sequence deptno_seq start with 51 increment by 1;
+
+CREATE or replace PROCEDURE create_dept(deptno IN OUT NUMBER, dname IN VARCHAR2, loc IN VARCHAR2) AS
+BEGIN
+	If deptno<=50 then
+SELECT deptno_seq.NEXTVAL INTO deptno FROM dual;
+End if;
+INSERT INTO dept VALUES (deptno, dname, loc);
+END;
+/
+--to call this proc
+DECLARE
+plsql_block VARCHAR2(500);
+new_deptno NUMBER(2);
+new_dname VARCHAR2(14) := 'ADVERTISING';
+new_loc VARCHAR2(13) := 'NEW YORK';
+BEGIN
+plsql_block := 'BEGIN create_dept(:a, :b, :c); END;';
+EXECUTE IMMEDIATE plsql_block USING IN OUT new_deptno, new_dname, new_loc;
+Dbms_output.put_line(new_deptno);
+END;
+/
+DECLARE
+plsql_block VARCHAR2(500);
+new_deptno NUMBER(2):=&a;
+new_dname VARCHAR2(14) := 'MARKETING';
+new_loc VARCHAR2(13) := 'DALLAS';
+BEGIN
+plsql_block := 'BEGIN create_dept(:a, :b, :c); END;';
+EXECUTE IMMEDIATE plsql_block USING IN OUT new_deptno, new_dname, new_loc;
+Dbms_output.put_line(new_deptno);
+END;
+/
+
+
+
+CREATE or replace PROCEDURE create_dept (deptno IN OUT NUMBER, dname IN VARCHAR2, loc IN VARCHAR2) AS
+BEGIN
+If deptno is null then
+SELECT deptno_seq.NEXTVAL INTO deptno FROM dual;
+	End if;
+INSERT INTO dept VALUES (deptno, dname, loc);
+END;
+/
+
+DECLARE
+plsql_block VARCHAR2(500);
+new_deptno NUMBER(2):=&a;
+new_dname VARCHAR2(14) := ’MARKETING’;
+new_loc VARCHAR2(13) := ’DALLAS’;
+BEGIN
+plsql_block := ’BEGIN create_dept(:a, :b, :c); END;’;
+EXECUTE IMMEDIATE plsql_block USING IN OUT new_deptno, new_dname, new_loc;
+Dbms_output.put_line(new_deptno);
+END;
+/
+========
+Create or replace procedure myproc(pquery varchar2, psal emp.sal%type) is
+emp_cv sys_refcursor; -- declare cursor variable
+my_ename emp.first_name%type;
+my_sal emp.salary%type;
+begin
+open emp_cv for pquery using psal;
+loop
+fetch emp_cv into my_ename, my_sal; -- fetch next row
+exit when emp_cv%notfound; -- exit loop when last row is fetched
+dbms_output.put_line('Name : '||my_ename||' Salary : '||my_sal);
+end loop;
+close emp_cv; -- close cursor variable
+end;
+/
+-----------------try yourself
+create type person as object (name varchar2(25), age number);
+/
+
+Create or replace type myhobby is varray(10) of varchar2(25);
+/
+
+Using dynamic SQL, you can write a package of procedures that uses these types, as follows:
+
+create package teams as
+procedure create_table (tab_name varchar2);
+procedure insert_row (tab_name varchar2, p person, h myhobby);
+procedure print_table (tab_name varchar2);
+end;
+/
+
+create or replace  package body teams as
+ 	procedure create_table (tab_name varchar2) is
+ 	begin
+execute immediate 'create table ' || tab_name ||'(pers person, hobbs myhobby)';
+end;
+
+ 	procedure insert_row (tab_name varchar2, p person, h myhobby) is
+ 	begin
+execute immediate 'insert into ' || tab_name || ' values (:1, :2)' using p, h;
+ 	end;
+
+ 	procedure print_table (tab_name varchar2) is
+ 		type refcurtyp is ref cursor;
+ 		cv refcurtyp;
+ 		p person;
+h myhobby;
+ 	begin
+ 		open cv for 'select pers, hobbs from ' || tab_name;
+ 		loop
+ 			fetch cv into p, h;
+ 			exit when cv%notfound;
+Dbms_output.put_line('Customer Age :'|| p.age||' Customer Name :' || p.name);
+ 			For y in 1..h.count
+ 			Loop
+ 				Dbms_output.put_line('Hobbies '||y||' '||h(y));
+ 			End loop;
+ 		end loop;
+ 		close cv;
+ 	end;
+ end;
+/
+
+Grant create any table to scott;
+Or else you wont be able to create a table thru native dynamic sql thru a stored or packaged procedure.
+
+execute teams.create_table('a'); 
+execute teams.insert_row('a' ,person ('Hemant', 28), myhobby('cricket', 'hockey', 'footbal'));
+execute teams.print_table('a')
+---------------Bulk fetch
+DECLARE
+ 	TYPE EmpCurTyp IS REF CURSOR;
+ 	TYPE NumList IS TABLE OF NUMBER;
+ 	TYPE NameList IS TABLE OF VARCHAR2(15);
+ 	emp_cv EmpCurTyp;
+ 	empnos NumList;
+ 	sals NumList;
+enames NameList;
+ 	a number;
+ 	ctr number:=1;
+ BEGIN
+ 	OPEN emp_cv FOR 'SELECT empno, ename FROM emp';
+	--following statement is implementation of BULK…FETCH 
+	FETCH emp_cv BULK COLLECT INTO empnos, enames;
+ 	CLOSE emp_cv;
+ 
+	--following statement is implementation of BULK…COLLECT 
+EXECUTE IMMEDIATE 'SELECT sal FROM emp'  BULK COLLECT INTO sals;
+a:=empnos.count;
+ 	While ctr<=a loop
+ 		Dbms_output.put_line(empnos(ctr)||' '||enames(ctr)||' '||sals(ctr));
+ 		ctr:=ctr+1;
+ 	End loop;
+ END;
+/
+===================== INSERT / UPDATE / DELTE - with returning clause
+DECLARE
+TYPE NameList IS TABLE OF VARCHAR2(15);
+enames NameList;
+comm_amt NUMBER := 500;
+sql_stmt VARCHAR(200);
+a number;
+ctr number:=1;
+BEGIN
+sql_stmt := 'UPDATE emp SET comm = :1 where deptno=30 RETURNING ename INTO :2';
+EXECUTE IMMEDIATE sql_stmt USING comm_amt RETURNING BULK COLLECT INTO enames;
+a:=enames.count;
+While ctr<=a loop
+ 		Dbms_output.put_line(enames(ctr));
+ 		ctr:=ctr+1;
+ 	End loop;
+END;
+/
+========
+Example of BULK BIND and BULK COLLECT using Dynamic SQL :
+DECLARE
+TYPE NumList IS TABLE OF NUMBER;
+TYPE NameList IS TABLE OF VARCHAR2(15);
+empnos NumList;
+enames NameList;
+a number;
+ctr number:=1;
+BEGIN
+empnos := NumList(100,200,300,400);
+--Implementation of BULK FOR ALL using the USING clause
+FORALL i IN 1..4 
+EXECUTE IMMEDIATE
+'UPDATE emp SET salary = salary * 1.1 WHERE id = :1
+RETURNING first_name INTO :2'
+USING empnos(i) RETURNING BULK COLLECT INTO enames;
+
+a:=enames.count;
+While ctr<=a loop
+ 		Dbms_output.put_line(enames(ctr));
+ 		ctr:=ctr+1;
+ 	End loop;
+END;
+/
+=============disable triggers for a Table supplied by the user
+CREATE OR REPLACE PROCEDURE DISABLE_TRIGGERS(TABLE_NAME VARCHAR2)
+is
+ 	A  NUMBER(4);
+ 	B NUMBER(4);
+BEGIN
+SELECT COUNT(*) INTO A  FROM USER_TABLES WHERE TABLE_NAME=upper(DISABLE_TRIGGERS.TABLE_NAME);
+
+IF A=0 THEN
+DBMS_OUTPUT.PUT_LINE('NO SUCH TABLE EXISTS IN DATA DICTIONARY');
+ 	ELSE
+SELECT COUNT(*) INTO B FROM USER_TRIGGERS WHERE TABLE_NAME=upper(DISABLE_TRIGGERS. TABLE_NAME);
+DBMS_OUTPUT.PUT_LINE('TOTAL NO OF TRIGGERS ON GIVEN TABLE IS:'||B);
+If b>0 then
+EXECUTE IMMEDIATE 'ALTER TABLE '|| DISABLE_TRIGGERS. TABLE_NAME ||' DISABLE ALL TRIGGERS';
+Else
+	DBMS_OUTPUT.PUT_LINE('There are no triggers to disable');
+End if;
+END IF;
+END;
+/
+
+declare
+ 	mytabx varchar2(10):='mytabx';
+begin
+ 	execute immediate 'create  table '||mytabx||'(x number, y char)';
+end;
+/
+
+PLSQL procedure successfully completed.
+
+declare
+ 	mytabx varchar2(10):='mytablex';
+begin
+execute immediate 'create  table :1(x number, y char)' using trim(mytabx);
+end;
+/
+====================DBMS_SQL
+CREATE OR REPLACE PROCEDURE demo1(salary IN NUMBER) AS
+cursor_name INTEGER;
+rows_processed INTEGER;
+BEGIN
+cursor_name := dbms_sql.open_cursor;
+dbms_output.put_line(cursor_name);
+DBMS_SQL.PARSE(cursor_name, 'DELETE FROM emp WHERE salary > :x', dbms_sql.native);
+DBMS_SQL.BIND_VARIABLE(cursor_name, ’:x’, salary);
+rows_processed := dbms_sql.execute(cursor_name);
+DBMS_SQL.close_cursor(cursor_name);
+	Dbms_output.put_line(rows_processed);
+EXCEPTION
+WHEN OTHERS THEN
+DBMS_SQL.CLOSE_CURSOR(cursor_name);
+END;
+/
+exec demo1 (18500)
+-------------
+The following sample procedure is passed a SQL statement, which it then parses and runs:
+
+CREATE OR REPLACE PROCEDURE exec(STRING IN varchar2) AS
+cursor_name INTEGER;
+ret INTEGER;
+BEGIN
+cursor_name := DBMS_SQL.OPEN_CURSOR;
+dbms_output.put_line(cursor_name);
+DBMS_SQL.PARSE(cursor_name, string, DBMS_SQL.native);
+ret := DBMS_SQL.EXECUTE(cursor_name);
+dbms_output.put_line(ret);
+DBMS_SQL.CLOSE_CURSOR(cursor_name);
+END;
+/
+======copy
+CREATE OR REPLACE PROCEDURE copy(source IN VARCHAR2, destination IN VARCHAR2) IS
+id_var NUMBER;
+name_var VARCHAR2(30);
+birthdate_var DATE;
+source_cursor INTEGER;
+destination_cursor INTEGER;
+ignore INTEGER;
+a number;
+BEGIN
+-- Prepare a cursor to select from the source table:
+source_cursor := dbms_sql.open_cursor;
+DBMS_SQL.PARSE(source_cursor, 'SELECT id, name, birthdate FROM ' || source, DBMS_SQL.native);
+DBMS_SQL.DEFINE_COLUMN(source_cursor, 1, id_var);
+DBMS_SQL.DEFINE_COLUMN(source_cursor, 2, name_var, 30);
+DBMS_SQL.DEFINE_COLUMN(source_cursor, 3, birthdate_var);
+ignore := DBMS_SQL.EXECUTE(source_cursor);
+dbms_output.put_line('row processed '|| ignore);
+-- returns 0
+-- Prepare a cursor to insert into the destination table:
+destination_cursor := DBMS_SQL.OPEN_CURSOR;
+DBMS_SQL.PARSE(destination_cursor, 'INSERT INTO ' || destination || ' VALUES (:id_bind, :name_bind, :birthdate_bind)', DBMS_SQL.native);
+-- Fetch a row from the source table and insert it into the destination table:
+LOOP
+	A:= DBMS_SQL.FETCH_ROWS(source_cursor);
+IF a>0 THEN
+dbms_output.put_line(a);
+--prints 1 for each fetch
+Dbms_output.put_line('hi'||id_var||name_var||birthdate_var);
+-- get column values of the row
+DBMS_SQL.COLUMN_VALUE(source_cursor, 1, id_var);
+DBMS_SQL.COLUMN_VALUE(source_cursor, 2, name_var);
+DBMS_SQL.COLUMN_VALUE(source_cursor, 3, birthdate_var);
+Dbms_output.put_line('hi'||id_var||name_var||birthdate_var);
+/* Bind the row into the cursor that inserts into the destination table.*/
+/* You could alter this example by inserting an if condition before the bind, if required*/
+DBMS_SQL.BIND_VARIABLE(destination_cursor, ':id_bind', id_var);
+DBMS_SQL.BIND_VARIABLE(destination_cursor, ':name_bind', name_var);
+DBMS_SQL.BIND_VARIABLE(destination_cursor, ':birthdate_bind', birthdate_var);
+ignore := DBMS_SQL.EXECUTE(destination_cursor);
+ELSE
+-- No more rows to copy:
+EXIT;
+END IF;
+END LOOP;
+-- Commit and close all cursors:
+COMMIT;
+DBMS_SQL.CLOSE_CURSOR(source_cursor);
+DBMS_SQL.CLOSE_CURSOR(destination_cursor);
+EXCEPTION
+WHEN OTHERS THEN
+IF DBMS_SQL.IS_OPEN(source_cursor) THEN
+DBMS_SQL.CLOSE_CURSOR(source_cursor);
+END IF;
+IF DBMS_SQL.IS_OPEN(destination_cursor) THEN
+DBMS_SQL.CLOSE_CURSOR(destination_cursor);
+END IF;
+RAISE;
+END;
+/
+exec copy('empsource', 'emptarget');
+============
+declare
+stmt varchar2(200);
+dept_no_array dbms_sql.Number_Table;
+c number;
+dummy number;
+begin
+dept_no_array(1) := 10;
+dept_no_array(2) := 20;
+dept_no_array(3) := 30;
+dept_no_array(4) := 40;
+dept_no_array(5) := 50;
+dept_no_array(6) := 60;
+stmt := 'delete from emp where deptno = :dept_array';
+c := dbms_sql.open_cursor;
+dbms_output.put_line('cursor ' ||c);
+dbms_sql.parse(c, stmt, dbms_sql.native);
+dbms_sql.bind_array(c, ':dept_array', dept_no_array, 1, 4);
+dummy := dbms_sql.execute(c);
+dbms_output.put_line('dummy ' || dummy);
+dbms_sql.close_cursor(c);
+exception 
+when others then
+if dbms_sql.is_open(c) then
+dbms_sql.close_cursor(c);
+end if;
+raise;
+end;
+/
+--------
+Following is an example of a bulk INSERT statement :
+create table newemp as select empno, ename from emp where 1=0;
+
+declare
+stmt varchar2(200);
+empno_array dbms_sql.Number_Table;
+empname_array dbms_sql.Varchar2_Table;
+c number;
+dummy number;
+begin
+for i in 0..9 loop
+empno_array(i) := 1000 + i;
+empname_array(i) := 'Emp'||i;
+end loop;
+stmt := 'insert into newemp values(:num_array, :name_array)';
+c := dbms_sql.open_cursor;
+dbms_output.put_line('cursor ' ||c);
+dbms_sql.parse(c, stmt, dbms_sql.native);
+dbms_sql.bind_array(c, ':num_array', empno_array);
+dbms_sql.bind_array(c, ':name_array', empname_array);
+dummy := dbms_sql.execute(c);
+dbms_output.put_line('dummy ' || dummy);
+dbms_sql.close_cursor(c);
+
+exception when others then
+if dbms_sql.is_open(c) then
+dbms_sql.close_cursor(c);
+end if;
+raise;
+end;
+/
+==========Update
+Following is an example of an bulk UPDATE statement.
+
+declare
+stmt varchar2(200);
+emp_no_array dbms_sql.Number_Table;
+emp_name_array dbms_sql.Varchar2_Table;
+c number;
+dummy number;
+begin
+for i in 0..9 loop
+emp_no_array(i) := 1000 + i;
+emp_name_array(I) := 'newemp'||i;
+end loop;
+stmt := 'update newemp set ename = :name_array where empno = :num_array';
+c := dbms_sql.open_cursor;
+dbms_output.put_line('cursor ' || c);
+dbms_sql.parse(c, stmt, dbms_sql.native);
+dbms_sql.bind_array(c, ':num_array', emp_no_array);
+dbms_sql.bind_array(c, ':name_array', emp_name_array);
+dummy := dbms_sql.execute(c);
+dbms_output.put_line('dummy ' || dummy);
+dbms_sql.close_cursor(c);
+exception when others then
+if dbms_sql.is_open(c) then
+dbms_sql.close_cursor(c);
+end if;
+raise;
+end;
+/
+=====================
